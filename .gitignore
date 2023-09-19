@@ -1,1 +1,4 @@
-.idea
+*.pk
+toncli.log
+toncli.err
+coordinator.fc
