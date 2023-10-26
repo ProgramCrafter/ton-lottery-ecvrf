@@ -16,6 +16,9 @@
 int workchains_equal?(slice addr1, slice addr2) asm "REWRITESTDADDR DROP SWAP REWRITESTDADDR DROP EQUAL";
 int slices_equal?(slice s1, slice s2) asm "SDEQ";
 int my_tons() asm "BALANCE" "FIRST";
+;; slice my_address() asm "MYADDR";
+global int rand_no;
+global int rand_updated;
 
 cell remove_old_orders(cell orders, int o_seqno) {
   int cursor = o_seqno - 20;
@@ -28,7 +31,7 @@ cell remove_old_orders(cell orders, int o_seqno) {
   return orders;
 }
 
-_ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, slice owner1, slice owner2, slice echo, cell orders) inline {
+_ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, slice owner1, slice owner2, slice ecvrf, cell orders) inline {
   return begin_cell()             ;; FIRST CELL
     .store_uint(o_seqno, 64)      ;; 64 bit  | order seqno
     .store_uint(n_wins, 64)       ;; 64 bit  | number of wins
@@ -40,7 +43,7 @@ _ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, s
       begin_cell()                ;; SECOND CELL:
         .store_slice(owner1)      ;; 267 bit | owner 1, @sergei_ton
         .store_slice(owner2)      ;; 267 bit | owner 2, @pyAndr3w
-        .store_slice(echo)        ;; 267 bit | crossworkchain echo contract
+        .store_slice(ecvrf)        ;; 267 bit | ecvrf coordinator contract
         .end_cell())
     .end_cell();
 }
@@ -92,57 +95,37 @@ _ unpack_order(slice order) inline_ref {
 
   slice sender = cs~load_msg_addr();
 
-  (slice stats, cell orders, slice owner1, slice owner2, slice echo) = unpack_state();
+  (slice stats, cell orders, slice owner1, slice owner2, slice ecvrf) = unpack_state();
+
+  ;; subscribe to ecvrf 
+  ;; TODiscuss: should it be included or omitted
+  ;; send_raw_message(
+  ;;   begin_cell()
+  ;;   .store_uint(0x18, 6)
+  ;;   .store_slice(ecvrf)
+  ;;   .store_coins(0)
+  ;;   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+  ;;   .store_uint(0xAB4C4859, 32)
+  ;;   .store_address(my_address())
+  ;;   .endCell(),
+  ;;   1
+  ;; );
 
   if (slices_equal?(sender, owner1) | slices_equal?(sender, owner2)) {
     ;; owners can only deposit
     return ();
   }
 
-  if (slices_equal?(sender, echo)) {
-    (slice player, int o_amount) = (in_msg_body~load_msg_addr(), in_msg_body~load_coins());
-    ;; lottery inactive if balance < 2 stake + 1 TON
-    if (my_tons() < o_amount * 2 + 1000000000) {
-       send_tons(player, msg_value, 2);
-    } else {
-      (int o_seqno, int n_wins, int in_amount, int out_amount, int hash) = unpack_stats(stats);
-      ;; Calculating new hash
-      hash = cell_hash(begin_cell()
-        .store_uint(hash, 256)
-        .store_uint(msg_hash, 256)
-        .store_uint(cur_lt(), 64)
-        .store_uint(now(), 64)
-        .end_cell()
-      );
-      randomize(hash);
-      if (rand(10) >= 4) {
-        builder order = pack_order(o_seqno, 3, now(), o_amount, player);
-        orders~udict_set_builder(64, o_seqno, order);
-        in_amount += o_amount;
-        if (o_amount > 3000000000) {
-            send_tons(owner1, o_amount / 6, 3);
-            send_tons(owner2, o_amount / 6, 3);
-        }
-      } else {
-        builder order = pack_order(o_seqno, 2, now(), o_amount, player);
-        orders~udict_set_builder(64, o_seqno, order);
+  slice msg_body = in_msg_body;
+  int op = in_msg_body~load_uint(32);
 
-        in_amount += o_amount;
-        out_amount += o_amount * 2;
-        n_wins += 1;
-
-        send_tons(player, 2 * o_amount, 3);
-      }
-      orders = remove_old_orders(orders, o_seqno);
-      o_seqno += 1;
-
-      set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner1, owner2, echo, orders));
-    }
-    return();
+  ;; new random number received from vrf
+  if (op == 0x069CECA8 & slices_equal?(sender, ecvrf)) {
+    int vrfrand = msg_body~load_uint(256);
+    rand_no = vrfrand % 10;
+    rand_updated = -1;
+    return ();
   }
-
-  ;; workchain protection
-  throw_unless(111, workchains_equal?(sender, my_address()));
 
   ;; min stake 1 TON
   throw_unless(333, msg_value > 999999999);
@@ -150,15 +133,52 @@ _ unpack_order(slice order) inline_ref {
   ;; lottery active if balance > 2 stake + 1 TON
   throw_unless(666, my_tons() > msg_value * 2 + 1000000000);
 
-  ;; send order amount to echo contract (crossworkchain)
-  builder msg = begin_cell()
-    .store_uint(0x18, 6)
-    .store_slice(echo)
-    .store_coins(0)
-    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-    .store_slice(sender)
-    .store_coins(msg_value);
-  send_raw_message(msg.end_cell(), 64);
+  ;; fallback incase random number is not updated by vrf
+  if (rand_updated == 0) {
+    rand_no = rand(10);
+  }
+
+  (slice player, int o_amount) = (in_msg_body~load_msg_addr(), in_msg_body~load_coins());
+  ;; lottery inactive if balance < 2 stake + 1 TON
+  if (my_tons() < o_amount * 2 + 1000000000) {
+      send_tons(player, msg_value, 2);
+  } else {
+    (int o_seqno, int n_wins, int in_amount, int out_amount, int hash) = unpack_stats(stats);
+    ;; Calculating new hash
+    hash = cell_hash(begin_cell()
+      .store_uint(hash, 256)
+      .store_uint(msg_hash, 256)
+      .store_uint(cur_lt(), 64)
+      .store_uint(now(), 64)
+      .end_cell()
+    );
+    randomize(hash);
+    if (rand_no >= 4) {
+      builder order = pack_order(o_seqno, 3, now(), o_amount, player);
+      orders~udict_set_builder(64, o_seqno, order);
+      in_amount += o_amount;
+      if (o_amount > 3000000000) {
+          send_tons(owner1, o_amount / 6, 3);
+          send_tons(owner2, o_amount / 6, 3);
+      }
+    } else {
+      builder order = pack_order(o_seqno, 2, now(), o_amount, player);
+      orders~udict_set_builder(64, o_seqno, order);
+
+      in_amount += o_amount;
+      out_amount += o_amount * 2;
+      n_wins += 1;
+
+      send_tons(player, 2 * o_amount, 3);
+    }
+    orders = remove_old_orders(orders, o_seqno);
+    o_seqno += 1;
+
+    set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner1, owner2, ecvrf, orders));
+  }
+  rand_updated = 0;
+  return();
+  
 }
 
 ;; ========== GET-METHODS FOR OLD SOFTWARE ==========
@@ -212,4 +232,8 @@ int get_pubkey() method_id {
 
 int balance() method_id {
     return my_tons();
+}
+
+int get_random() method_id {
+  return rand_no;
 }
