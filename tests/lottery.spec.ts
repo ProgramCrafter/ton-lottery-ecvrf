@@ -90,27 +90,28 @@ class CoordinatorUnit implements Contract {
     }
 
     async getUnfulfilled(provider: ContractProvider): Promise<number> {
-        return (await provider.get('get_unfulfilled', [])).stack.readNumber()
+        return (await provider.get('get_unfulfilled', [])).stack.readNumber();
     }
 }
 
 class LotteryUint implements Contract {
     constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) { }
 
-    static createFromAddress(address: Address, owner1: Slice, owner2: Slice, ecvrf: Slice) {
+    static createFromAddress(owner: Slice, ecvrf: Slice) {
         const data = beginCell()
         .storeUint(0, 64 + 64 + 256 + 256 + 256)
+        .storeUint(8, 64)
+        .storeUint(0, 32)
         .storeBit(1)
         .storeRef(
             beginCell()
-            .storeSlice(owner1)
-            .storeSlice(owner2)
+            .storeSlice(owner)
             .storeSlice(ecvrf)
             .endCell()
         )
         .endCell();
         const init = { code: lotteryCode, data };
-        return new LotteryUint(address, init);
+        return new LotteryUint(contractAddress(0, init), init);
     }
 
     async sendDeploy(provider: ContractProvider, via: Sender) {
@@ -129,8 +130,8 @@ class LotteryUint implements Contract {
         });
     }
 
-    async getLatestRand(provider: ContractProvider): Promise<number> {
-        return (await provider.get('get_random', [])).stack.readNumber()
+    async getLatestRand(provider: ContractProvider): Promise<any> {
+        return (await provider.get('get_random', []));
     }
 }
 
@@ -138,33 +139,30 @@ describe("lottery test", () => {
     let blockchain: Blockchain;
     let ecvrf: SandboxContract<CoordinatorUnit>;
     let lottery: SandboxContract<LotteryUint>;
-    const secretEcvrf = BigInt(123456);
+    const secretEcvrf = 123456n;
     const keyReplay = randomTestKey('ecvrf-coordinator');
     let deployer: SandboxContract<TreasuryContract>;
 
     beforeEach(async () => {
         blockchain = await Blockchain.create({ config: 'slim' });
         deployer = await blockchain.treasury('deployer');
-        let ecvrf_zeroRist255key = blockchain.openContract(CoordinatorUnit.createFromOwnerAndKey(deployer.address ,BigInt(0) ,keyReplay.publicKey));
+        let ecvrf_zeroRist255key = blockchain.openContract(CoordinatorUnit.createFromOwnerAndKey(deployer.address ,0n ,keyReplay.publicKey));
         await ecvrf_zeroRist255key.sendDeploy(deployer.getSender());
         const publicRistKey = await ecvrf_zeroRist255key.getPublicKey(secretEcvrf);
         ecvrf = blockchain.openContract(CoordinatorUnit.createFromOwnerAndKey(deployer.address, publicRistKey, keyReplay.publicKey));
         await ecvrf.sendDeploy(deployer.getSender());
         lottery = blockchain.openContract(LotteryUint.createFromAddress(
-            deployer.address, 
-            beginCell().storeAddress(deployer.address).asSlice(), 
             beginCell().storeAddress(deployer.address).asSlice(), 
             beginCell().storeAddress(ecvrf.address).asSlice()
         ));
-        await lottery.sendDeploy(deployer.getSender())
+        await lottery.sendDeploy(deployer.getSender());
 
-        await ecvrf.sendSubscribeRandom(deployer.getSender(), BigInt(610000000), lottery.address);
+        await ecvrf.sendSubscribeRandom(deployer.getSender(), 610000000n, lottery.address);
     })
 
     it("should update random number for coordinator", async () => {
         const alpha = await ecvrf.getAlpha();
         const pi = await ecvrf.getCalcPiFromAlpha(secretEcvrf, alpha);
-        
         await ecvrf.sendProvideRandomness(pi, keyReplay.secretKey);
         let random_1 = await lottery.getLatestRand();
         await ecvrf.sendProvideRandomness(pi, keyReplay.secretKey);
@@ -183,67 +181,66 @@ describe("lottery test", () => {
     it("should give lottery to winner", async () => {
         let mockEcvrf = await blockchain.treasury("mock-ecvrf");
 
-        lottery = blockchain.openContract(LotteryUint.createFromAddress(
-            deployer.address, 
-            beginCell().storeAddress(deployer.address).asSlice(), 
-            beginCell().storeAddress(deployer.address).asSlice(), 
+        lottery = blockchain.openContract(LotteryUint.createFromAddress( 
+            beginCell().storeAddress(deployer.address).asSlice(),  
             beginCell().storeAddress(mockEcvrf.address).asSlice()
         ));
 
         const player1 = await blockchain.treasury('player1');
         const player2 = await blockchain.treasury('player2');
-        const initialBet = 10000000;
+        const initialBet = 10000000000n;
         const player1InitialBalance = await player1.getBalance()
         
         await deployer.send({
             to: lottery.address,
-            value: BigInt(initialBet*2) + BigInt(1000000000),
+            value: initialBet * 2n + 1000000000n,
             sendMode: SendMode.PAY_GAS_SEPARATELY
         });
         
         await player1.send({
             to: lottery.address,
-            value: BigInt(initialBet),
+            value: initialBet,
             sendMode: SendMode.PAY_GAS_SEPARATELY
         })
 
         await player2.send({
             to: lottery.address,
-            value: BigInt(initialBet),
+            value: initialBet,
             sendMode: SendMode.PAY_GAS_SEPARATELY
         })
+
+        const player1IntermediateBalance = await player1.getBalance()
 
         let rnd = 177;
         await mockEcvrf.send({
             to: lottery.address,
-            value: BigInt(30000000),
+            value: 30000000n,
             body: beginCell().storeUint(0x069CECA8, 32).storeUint(rnd, 256).endCell(),
             sendMode: SendMode.PAY_GAS_SEPARATELY
         });
 
         await player2.send({
             to: lottery.address,
-            value: BigInt(initialBet * 2),
+            value: initialBet * 2n,
             sendMode: SendMode.PAY_GAS_SEPARATELY
         })
 
         rnd = 173;
         await mockEcvrf.send({
             to: lottery.address,
-            value: BigInt(30000000),
+            value: 30000000n,
             body: beginCell().storeUint(0x069CECA8, 32).storeUint(rnd, 256).endCell(),
             sendMode: SendMode.PAY_GAS_SEPARATELY
         });
 
         await player1.send({
             to: lottery.address,
-            value: BigInt(initialBet * 2),
+            value: initialBet * 2n,
             sendMode: SendMode.PAY_GAS_SEPARATELY
         })
 
         const player1FinalBalance = await player1.getBalance();
-
-        expect(Number(player1InitialBalance - player1FinalBalance)).to.be.lessThanOrEqual(initialBet * 4);
+        expect(player1FinalBalance - player1IntermediateBalance).to.be.equal(initialBet) //(initialBet * 4);
 
     })
 })

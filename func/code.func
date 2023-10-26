@@ -9,16 +9,13 @@
   2. Andrew Gutarev    | pyAndr3w
         hacked the first version contract and create new version (this) | https://github.com/pyAndr3w/ton-instant-lottery-smc
 
-
-  Special thanks to TON Fruits for the "Calculating new hash" algorithm
+  3. Prajjawal Khandelwal | Prajjawalk
+        added ecvrf integration for random number generation | https://github.com/Prajjawalk/ton-lottery-ecvrf
 -}
 
 int workchains_equal?(slice addr1, slice addr2) asm "REWRITESTDADDR DROP SWAP REWRITESTDADDR DROP EQUAL";
 int slices_equal?(slice s1, slice s2) asm "SDEQ";
 int my_tons() asm "BALANCE" "FIRST";
-;; slice my_address() asm "MYADDR";
-global int rand_no;
-global int rand_updated;
 
 cell remove_old_orders(cell orders, int o_seqno) {
   int cursor = o_seqno - 20;
@@ -31,18 +28,19 @@ cell remove_old_orders(cell orders, int o_seqno) {
   return orders;
 }
 
-_ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, slice owner1, slice owner2, slice ecvrf, cell orders) inline {
+_ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, slice owner, slice ecvrf, int rand_no, int rand_updated, cell orders) inline {
   return begin_cell()             ;; FIRST CELL
     .store_uint(o_seqno, 64)      ;; 64 bit  | order seqno
     .store_uint(n_wins, 64)       ;; 64 bit  | number of wins
     .store_uint(in_amount, 256)   ;; 256 bit | ingoing amount
     .store_uint(out_amount, 256)  ;; 256 bit | outgoing amount
     .store_uint(hash, 256)        ;; 256 bit | seed salt
+    .store_uint(rand_no, 64)      ;; 64 bit | random number
+    .store_uint(rand_updated, 32) ;; 32 bit | bool rand_updated
     .store_dict(orders)           ;; bit+ref | last orders dict
     .store_ref(
       begin_cell()                ;; SECOND CELL:
-        .store_slice(owner1)      ;; 267 bit | owner 1, @sergei_ton
-        .store_slice(owner2)      ;; 267 bit | owner 2, @pyAndr3w
+        .store_slice(owner)      ;; 267 bit | owner 1
         .store_slice(ecvrf)        ;; 267 bit | ecvrf coordinator contract
         .end_cell())
     .end_cell();
@@ -50,15 +48,15 @@ _ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, s
 
 _ unpack_state() inline {
   var ds = get_data().begin_parse();
-  slice stats = ds~load_bits(896);
+  slice stats = ds~load_bits(896 + 64 + 32);
   cell orders = ds~load_dict();
   slice adrs = ds.preload_ref().begin_parse();
-  var unpacked = (stats, orders, adrs~load_msg_addr(), adrs~load_msg_addr(), adrs~load_msg_addr());
+  var unpacked = (stats, orders, adrs~load_msg_addr(), adrs~load_msg_addr());
   return unpacked;
 }
 
 _ unpack_stats(slice stats) inline {
-  var unpacked = (stats~load_uint(64), stats~load_uint(64), stats~load_uint(256), stats~load_uint(256), stats~load_uint(256));
+  var unpacked = (stats~load_uint(64), stats~load_uint(64), stats~load_uint(256), stats~load_uint(256), stats~load_uint(256), stats~load_uint(64), stats~load_uint(32));
   return unpacked;
 }
 
@@ -95,23 +93,21 @@ _ unpack_order(slice order) inline_ref {
 
   slice sender = cs~load_msg_addr();
 
-  (slice stats, cell orders, slice owner1, slice owner2, slice ecvrf) = unpack_state();
-
+  (slice stats, cell orders, slice owner, slice ecvrf) = unpack_state();
   ;; subscribe to ecvrf 
-  ;; TODiscuss: should it be included or omitted
-  ;; send_raw_message(
-  ;;   begin_cell()
-  ;;   .store_uint(0x18, 6)
-  ;;   .store_slice(ecvrf)
-  ;;   .store_coins(0)
-  ;;   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-  ;;   .store_uint(0xAB4C4859, 32)
-  ;;   .store_address(my_address())
-  ;;   .endCell(),
-  ;;   1
-  ;; );
+  send_raw_message(
+    begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(ecvrf)
+    .store_coins(0)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .store_uint(0xAB4C4859, 32)
+    .store_slice(my_address())
+    .end_cell(),
+    1
+  );
 
-  if (slices_equal?(sender, owner1) | slices_equal?(sender, owner2)) {
+  if (slices_equal?(sender, owner)) {
     ;; owners can only deposit
     return ();
   }
@@ -122,8 +118,10 @@ _ unpack_order(slice order) inline_ref {
   ;; new random number received from vrf
   if (op == 0x069CECA8 & slices_equal?(sender, ecvrf)) {
     int vrfrand = msg_body~load_uint(256);
+    (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int rand_no, int rand_updated) = unpack_stats(stats);
     rand_no = vrfrand % 10;
-    rand_updated = -1;
+    rand_updated = 1;
+    set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, rand_no, rand_updated, orders));
     return ();
   }
 
@@ -133,17 +131,12 @@ _ unpack_order(slice order) inline_ref {
   ;; lottery active if balance > 2 stake + 1 TON
   throw_unless(666, my_tons() > msg_value * 2 + 1000000000);
 
-  ;; fallback incase random number is not updated by vrf
-  if (rand_updated == 0) {
-    rand_no = rand(10);
-  }
-
   (slice player, int o_amount) = (in_msg_body~load_msg_addr(), in_msg_body~load_coins());
   ;; lottery inactive if balance < 2 stake + 1 TON
   if (my_tons() < o_amount * 2 + 1000000000) {
       send_tons(player, msg_value, 2);
   } else {
-    (int o_seqno, int n_wins, int in_amount, int out_amount, int hash) = unpack_stats(stats);
+    (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int rand_no, int rand_updated) = unpack_stats(stats);
     ;; Calculating new hash
     hash = cell_hash(begin_cell()
       .store_uint(hash, 256)
@@ -153,13 +146,16 @@ _ unpack_order(slice order) inline_ref {
       .end_cell()
     );
     randomize(hash);
-    if (rand_no >= 4) {
+    ;; fallback incase random number is not updated by vrf
+    if (rand_updated == 0) {
+      rand_no = rand(10);
+    }
+    if (rand_no >= 4 & (rand_updated == 1)) {
       builder order = pack_order(o_seqno, 3, now(), o_amount, player);
       orders~udict_set_builder(64, o_seqno, order);
       in_amount += o_amount;
       if (o_amount > 3000000000) {
-          send_tons(owner1, o_amount / 6, 3);
-          send_tons(owner2, o_amount / 6, 3);
+          send_tons(owner, o_amount / 6, 3);
       }
     } else {
       builder order = pack_order(o_seqno, 2, now(), o_amount, player);
@@ -174,9 +170,9 @@ _ unpack_order(slice order) inline_ref {
     orders = remove_old_orders(orders, o_seqno);
     o_seqno += 1;
 
-    set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner1, owner2, ecvrf, orders));
+    rand_updated = 0;
+    set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, rand_no, rand_updated, orders));
   }
-  rand_updated = 0;
   return();
   
 }
@@ -186,31 +182,31 @@ _ unpack_order(slice order) inline_ref {
 tuple order_tuple(int id, int status, int timestamp, int amount, int wc, int addr_hash) asm(id status timestamp amount wc addr_hash) "6 TUPLE";
 
 int get_order_seqno() method_id {
-  (slice stats, _, _, _, _) = unpack_state();
-  (int o_seqno, _, _, _, _) = unpack_stats(stats);
+  (slice stats, _, _, _) = unpack_state();
+  (int o_seqno, _, _, _, _, _, _) = unpack_stats(stats);
   return o_seqno;
 }
 
 int get_number_of_wins() method_id {
-  (slice stats, _, _, _, _) = unpack_state();
-  (_, int n_wins, _, _, _) = unpack_stats(stats);
+  (slice stats, _, _, _) = unpack_state();
+  (_, int n_wins, _, _, _, _, _) = unpack_stats(stats);
   return n_wins;
 }
 
 int get_incoming_amount() method_id {
-  (slice stats, _, _, _, _) = unpack_state();
-  (_, _, int in_amount, _, _) = unpack_stats(stats);
+  (slice stats, _, _, _) = unpack_state();
+  (_, _, int in_amount, _, _, _, _) = unpack_stats(stats);
   return in_amount;
 }
 
 int get_outgoing_amount() method_id {
-  (slice stats, _, _, _, _) = unpack_state();
-  (_, _, _, int out_amount, _) = unpack_stats(stats);
+  (slice stats, _, _, _) = unpack_state();
+  (_, _, _, int out_amount, _, _, _) = unpack_stats(stats);
   return out_amount;
 }
 
 var get_orders() method_id {
-  (_, cell orders, _, _, _) = unpack_state();
+  (_, cell orders, _, _) = unpack_state();
   int cursor = 0x7fffffff;
   var l = nil;
   do {
@@ -225,8 +221,8 @@ var get_orders() method_id {
 }
 
 int get_pubkey() method_id {
-  (slice stats, _, _, _, _) = unpack_state();
-  (_, _, _, _, int hash) = unpack_stats(stats);
+  (slice stats, _, _, _) = unpack_state();
+  (_, _, _, _, int hash, _, _) = unpack_stats(stats);
   return hash;
 }
 
@@ -235,5 +231,7 @@ int balance() method_id {
 }
 
 int get_random() method_id {
-  return rand_no;
+  (slice stats, _, _, _) = unpack_state();
+  (_, _, _, _, _, int random_no, _) = unpack_stats(stats);
+  return random_no;
 }
