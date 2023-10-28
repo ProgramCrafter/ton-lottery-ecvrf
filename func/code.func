@@ -28,14 +28,14 @@ cell remove_old_orders(cell orders, int o_seqno) {
   return orders;
 }
 
-_ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, slice owner, slice ecvrf, slice player, int rand_updated, int player_coins, cell orders) inline {
+_ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, slice owner, slice ecvrf, slice player, int random_locked, int player_coins, cell orders) inline {
   return begin_cell()             ;; FIRST CELL
     .store_uint(o_seqno, 64)      ;; 64 bit  | order seqno
     .store_uint(n_wins, 64)       ;; 64 bit  | number of wins
     .store_uint(in_amount, 256)   ;; 256 bit | ingoing amount
     .store_uint(out_amount, 256)  ;; 256 bit | outgoing amount
     .store_uint(hash, 256)        ;; 256 bit | seed salt
-    .store_uint(rand_updated, 32) ;; 32 bit  | bool rand_updated
+    .store_uint(random_locked, 1) ;; 1 bit  | bool random_locked
     .store_dict(orders)           ;; bit+ref | last orders dict
     .store_ref(
       begin_cell()                ;; SECOND CELL:
@@ -57,7 +57,7 @@ _ unpack_state() inline {
 }
 
 _ unpack_stats(slice stats) inline {
-  var unpacked = (stats~load_uint(64), stats~load_uint(64), stats~load_uint(256), stats~load_uint(256), stats~load_uint(256), stats~load_uint(32));
+  var unpacked = (stats~load_uint(64), stats~load_uint(64), stats~load_uint(256), stats~load_uint(256), stats~load_uint(256), stats~load_uint(1));
   return unpacked;
 }
 
@@ -105,9 +105,9 @@ _ unpack_order(slice order) inline_ref {
   ;; new random number received from vrf
   if (op == 0x069CECA8 & slices_equal?(sender, ecvrf)) {
     int vrfrand = in_msg_body~load_uint(256);
-    (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int rand_updated) = unpack_stats(stats);
+    (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int random_locked) = unpack_stats(stats);
     int rand_no = vrfrand % 10;
-    rand_updated = 1;
+    random_locked = 1;
 
     ;; Calculating new hash
     hash = cell_hash(begin_cell()
@@ -137,14 +137,14 @@ _ unpack_order(slice order) inline_ref {
       send_tons(player, 2 * player_coins, 3);
     }
 
-    set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, player, rand_updated, 0, orders));
+    set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, player, random_locked, 0, orders));
     return ();
   }
 
-  (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int rand_updated) = unpack_stats(stats);
+  (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int random_locked) = unpack_stats(stats);
   (slice new_player, int o_amount) = (in_msg_body~load_msg_addr(), in_msg_body~load_coins());
 
-  if (rand_updated == 0) {
+  if (random_locked == 0) {
     send_tons(new_player, msg_value, 2);
     return ();
   }
@@ -177,8 +177,8 @@ _ unpack_order(slice order) inline_ref {
   orders = remove_old_orders(orders, o_seqno);
   o_seqno += 1;
 
-  rand_updated = 0;
-  set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, new_player, rand_updated, o_amount, orders));
+  random_locked = 0;
+  set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, new_player, random_locked, o_amount, orders));
   
   return();
 }
