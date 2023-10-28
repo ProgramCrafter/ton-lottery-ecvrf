@@ -28,20 +28,21 @@ cell remove_old_orders(cell orders, int o_seqno) {
   return orders;
 }
 
-_ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, slice owner, slice ecvrf, int rand_no, int rand_updated, cell orders) inline {
+_ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, slice owner, slice ecvrf, slice player, int rand_updated, int player_coins, cell orders) inline {
   return begin_cell()             ;; FIRST CELL
     .store_uint(o_seqno, 64)      ;; 64 bit  | order seqno
     .store_uint(n_wins, 64)       ;; 64 bit  | number of wins
     .store_uint(in_amount, 256)   ;; 256 bit | ingoing amount
     .store_uint(out_amount, 256)  ;; 256 bit | outgoing amount
     .store_uint(hash, 256)        ;; 256 bit | seed salt
-    .store_uint(rand_no, 64)      ;; 64 bit | random number
-    .store_uint(rand_updated, 32) ;; 32 bit | bool rand_updated
+    .store_uint(rand_updated, 32) ;; 32 bit  | bool rand_updated
     .store_dict(orders)           ;; bit+ref | last orders dict
     .store_ref(
       begin_cell()                ;; SECOND CELL:
-        .store_slice(owner)      ;; 267 bit | owner 1
+        .store_slice(owner)      ;; 267 bit | owner 
         .store_slice(ecvrf)        ;; 267 bit | ecvrf coordinator contract
+        .store_slice(player)      ;; 267 bit | current player
+        .store_coins(player_coins)
         .end_cell())
     .end_cell();
 }
@@ -51,12 +52,12 @@ _ unpack_state() inline {
   slice stats = ds~load_bits(896 + 64 + 32);
   cell orders = ds~load_dict();
   slice adrs = ds.preload_ref().begin_parse();
-  var unpacked = (stats, orders, adrs~load_msg_addr(), adrs~load_msg_addr());
+  var unpacked = (stats, orders, adrs~load_msg_addr(), adrs~load_msg_addr(), adrs~load_msg_addr(), adrs~load_coins());
   return unpacked;
 }
 
 _ unpack_stats(slice stats) inline {
-  var unpacked = (stats~load_uint(64), stats~load_uint(64), stats~load_uint(256), stats~load_uint(256), stats~load_uint(256), stats~load_uint(64), stats~load_uint(32));
+  var unpacked = (stats~load_uint(64), stats~load_uint(64), stats~load_uint(256), stats~load_uint(256), stats~load_uint(256), stats~load_uint(32));
   return unpacked;
 }
 
@@ -91,52 +92,23 @@ _ unpack_order(slice order) inline_ref {
       return ();
   }
 
+  (slice stats, cell orders, slice owner, slice ecvrf, slice player, int player_coins) = unpack_state();
   slice sender = cs~load_msg_addr();
-
-  (slice stats, cell orders, slice owner, slice ecvrf) = unpack_state();
-  ;; subscribe to ecvrf 
-  send_raw_message(
-    begin_cell()
-    .store_uint(0x18, 6)
-    .store_slice(ecvrf)
-    .store_coins(0)
-    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-    .store_uint(0xAB4C4859, 32)
-    .store_slice(my_address())
-    .end_cell(),
-    1
-  );
 
   if (slices_equal?(sender, owner)) {
     ;; owners can only deposit
     return ();
   }
 
-  slice msg_body = in_msg_body;
   int op = in_msg_body~load_uint(32);
 
   ;; new random number received from vrf
   if (op == 0x069CECA8 & slices_equal?(sender, ecvrf)) {
-    int vrfrand = msg_body~load_uint(256);
-    (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int rand_no, int rand_updated) = unpack_stats(stats);
-    rand_no = vrfrand % 10;
+    int vrfrand = in_msg_body~load_uint(256);
+    (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int rand_updated) = unpack_stats(stats);
+    int rand_no = vrfrand % 10;
     rand_updated = 1;
-    set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, rand_no, rand_updated, orders));
-    return ();
-  }
 
-  ;; min stake 1 TON
-  throw_unless(333, msg_value > 999999999);
-
-  ;; lottery active if balance > 2 stake + 1 TON
-  throw_unless(666, my_tons() > msg_value * 2 + 1000000000);
-
-  (slice player, int o_amount) = (in_msg_body~load_msg_addr(), in_msg_body~load_coins());
-  ;; lottery inactive if balance < 2 stake + 1 TON
-  if (my_tons() < o_amount * 2 + 1000000000) {
-      send_tons(player, msg_value, 2);
-  } else {
-    (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int rand_no, int rand_updated) = unpack_stats(stats);
     ;; Calculating new hash
     hash = cell_hash(begin_cell()
       .store_uint(hash, 256)
@@ -146,35 +118,69 @@ _ unpack_order(slice order) inline_ref {
       .end_cell()
     );
     randomize(hash);
-    ;; fallback incase random number is not updated by vrf
-    if (rand_updated == 0) {
-      rand_no = rand(10);
-    }
-    if (rand_no >= 4 & (rand_updated == 1)) {
-      builder order = pack_order(o_seqno, 3, now(), o_amount, player);
+
+    if (rand_no >= 4) {
+      builder order = pack_order(o_seqno, 3, now(), player_coins, player);
       orders~udict_set_builder(64, o_seqno, order);
-      in_amount += o_amount;
-      if (o_amount > 3000000000) {
-          send_tons(owner, o_amount / 6, 3);
+      in_amount += player_coins;
+      if (player_coins > 3000000000) {
+          send_tons(owner, player_coins / 6, 3);
       }
     } else {
-      builder order = pack_order(o_seqno, 2, now(), o_amount, player);
+      builder order = pack_order(o_seqno, 2, now(), player_coins, player);
       orders~udict_set_builder(64, o_seqno, order);
 
-      in_amount += o_amount;
-      out_amount += o_amount * 2;
+      in_amount += player_coins;
+      out_amount += player_coins * 2;
       n_wins += 1;
 
-      send_tons(player, 2 * o_amount, 3);
+      send_tons(player, 2 * player_coins, 3);
     }
-    orders = remove_old_orders(orders, o_seqno);
-    o_seqno += 1;
 
-    rand_updated = 0;
-    set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, rand_no, rand_updated, orders));
+    set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, player, rand_updated, 0, orders));
+    return ();
   }
-  return();
+
+  (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int rand_updated) = unpack_stats(stats);
+  (slice new_player, int o_amount) = (in_msg_body~load_msg_addr(), in_msg_body~load_coins());
+
+  if (rand_updated == 0) {
+    send_tons(new_player, msg_value, 2);
+    return ();
+  }
+
+  ;; min stake 1 TON
+  throw_unless(333, msg_value > 999999999);
+
+  ;; lottery active if balance > 2 stake + 1 TON
+  throw_unless(666, my_tons() > msg_value * 2 + 1000000000);
+
+  ;; lottery inactive if balance < 2 stake + 1 TON
+  if (my_tons() < o_amount * 2 + 1000000000) {
+      send_tons(new_player, msg_value, 2);
+      return ();
+  }
   
+  ;; subscribe to ecvrf 
+  send_raw_message(
+    begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(ecvrf)
+    .store_coins(610000000)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .store_uint(0xAB4C4859, 32)
+    .store_slice(my_address())
+    .end_cell(),
+    1
+  );
+
+  orders = remove_old_orders(orders, o_seqno);
+  o_seqno += 1;
+
+  rand_updated = 0;
+  set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, new_player, rand_updated, o_amount, orders));
+  
+  return();
 }
 
 ;; ========== GET-METHODS FOR OLD SOFTWARE ==========
@@ -182,31 +188,31 @@ _ unpack_order(slice order) inline_ref {
 tuple order_tuple(int id, int status, int timestamp, int amount, int wc, int addr_hash) asm(id status timestamp amount wc addr_hash) "6 TUPLE";
 
 int get_order_seqno() method_id {
-  (slice stats, _, _, _) = unpack_state();
-  (int o_seqno, _, _, _, _, _, _) = unpack_stats(stats);
+  (slice stats, _, _, _, _, _) = unpack_state();
+  (int o_seqno, _, _, _, _, _) = unpack_stats(stats);
   return o_seqno;
 }
 
 int get_number_of_wins() method_id {
-  (slice stats, _, _, _) = unpack_state();
-  (_, int n_wins, _, _, _, _, _) = unpack_stats(stats);
+  (slice stats, _, _, _, _, _) = unpack_state();
+  (_, int n_wins, _, _, _, _) = unpack_stats(stats);
   return n_wins;
 }
 
 int get_incoming_amount() method_id {
-  (slice stats, _, _, _) = unpack_state();
-  (_, _, int in_amount, _, _, _, _) = unpack_stats(stats);
+  (slice stats, _, _, _, _, _) = unpack_state();
+  (_, _, int in_amount, _, _, _) = unpack_stats(stats);
   return in_amount;
 }
 
 int get_outgoing_amount() method_id {
-  (slice stats, _, _, _) = unpack_state();
-  (_, _, _, int out_amount, _, _, _) = unpack_stats(stats);
+  (slice stats, _, _, _, _, _) = unpack_state();
+  (_, _, _, int out_amount, _, _) = unpack_stats(stats);
   return out_amount;
 }
 
 var get_orders() method_id {
-  (_, cell orders, _, _) = unpack_state();
+  (_, cell orders, _, _, _, _) = unpack_state();
   int cursor = 0x7fffffff;
   var l = nil;
   do {
@@ -221,17 +227,11 @@ var get_orders() method_id {
 }
 
 int get_pubkey() method_id {
-  (slice stats, _, _, _) = unpack_state();
-  (_, _, _, _, int hash, _, _) = unpack_stats(stats);
+  (slice stats, _, _, _, _, _) = unpack_state();
+  (_, _, _, _, int hash, _) = unpack_stats(stats);
   return hash;
 }
 
 int balance() method_id {
     return my_tons();
-}
-
-int get_random() method_id {
-  (slice stats, _, _, _) = unpack_state();
-  (_, _, _, _, _, int random_no, _) = unpack_stats(stats);
-  return random_no;
 }
