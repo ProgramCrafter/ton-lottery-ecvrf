@@ -1,11 +1,11 @@
 import { randomTestKey } from "ton/dist/utils/randomTestKey";
-import { compileFunc } from '@ton-community/func-js';
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton-community/sandbox';
 import { readFileSync, writeFileSync } from 'fs';
-import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode, Slice, toNano, TupleBuilder } from 'ton';
+import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Dictionary, Sender, SendMode, Slice, toNano, TupleBuilder } from 'ton';
 import { sign } from "ton-crypto";
 import { expect } from "chai";
 import '@ton/test-utils';
+import { DictionaryValue, loadMessageRelaxed } from "@ton/core";
 
 let coordinatorCode = Cell.fromBase64("te6ccgECGwEABDUAART/APSkE/S88sgLAQIBIAIDAgFIBAUC9vLtRND0BNM/0wfTD1UwbwQB+kDT/9P/0x8wM/gjUAO88uCCA9QB0O1E+QBAE/kQ8uCD+ADtRNAg10mpOALtRPkAWdcDyMsHy/8ibyTtRNCAINcj+CMFyPQAFMs/EssHyw8BgQML1yLPFssfye1UQwDbPIIQBpzsqMjLHxgZAdTQINdJwSDjCAHQ0wMBcbAB+kAwAeMIAdMfIYIQq0xIWbqORTBsEoIQywO/r7qONu1E0PQB0z941yHTD/pAMFEzxwXy4KumMoIID0JAqAGocPsCcIAYyMsFWM8WIfoCy2rJgwb7AJEw4uMNBgIBIAcIAM5sIe1E0PQE0z/TB9MPBoIImJaAoSGmPIIID0JAqKkEIMEB4wgF+kAwUwSBAQv0Cm+hs5owAqQghAe88tCql9cLPxagRRXiUTWgBcjLP0AEgQEL9EFQJATI9AATyz/LB8sPAc8Wye1UAgFICQoCASAMDQAjtVidqJoegJpn+mD6YeIEi+CQAfu1zaQ/JLkLGeLQXgWcckwfoNWVjN1V+Vhlni7KOpsJiJuTOqvMAhBad+lUcF4doqxR2RqlrfQg1bDC0DtgTpXsg8IeCBjcteyiimVqfzkZf+sZ4vl/7j8ggC3kXyQKYF8kimYgORl/7j8ggBVv+Rlv+X/uPyCAHyTVIQQfJLALAGhTMfkkIxBGEDVZBMjL/xPL/8v/AcjL/xLL/3L5BACpOH9SBKig+SapCAHIy/8Sy3/L/8nQAgEgDg8CASAUFQIBWBARAgEgEhMAIa5P9qJoegJpn+mD6YeKL4JAAQWt6sAYAAewsp/gAEGxw7tRND0BNM/0wfTDxRfBKY8gggPQkCoAaiCCJiWgKCACASAWFwAzt/s9qJoEGuk1JwBdqJ8gCzrgeRlg+X/5OhAACbD/PklgACOyjPtRND0BNM/0wfTDxA0XwSAB7tP/Ifkh03/T/zADgvAs45Jg/QasrGbqr8rDLPF2UdTYTETcmdVeYBCC079Ko4Lw7RVijsjVLW+hBq2GFoHbAnSvZB4Q8EDG5a9lFFMrU/nIy/9YzxfL/3H5BAFvIvkgUwP5JF35JPkjBPklU1L5JPkjEDVURRMFGgDoy//JAW8kbVEyoSKOQASBAQv0kvLglgHXCz8gwgGcpcjLP1QgBoEBC/RBlTADpQME4nGAGMjLBVAGzxaCCcnDgPoCFctqUmDMyXL7AATkNDRQA+1E0IAg1yP4IwXI9AAUyz8SywfLDwGBAwvXIs8Wyx/J7VQA1gTIy/8Ty//L/wHIy/8Sy/9y+QQAqTh/uvLgZILwSFSSpO6TpQQ1KStyiS8XYXs6AHh/xFiZxPIU5Lqmp62C8O0VYo7I1S1voQathhaB2wJ0r2QeEPBAxuWvZRRTK1P5yMv/Esv/y/9x+QQA");
 let lotteryCode = Cell.fromBoc(readFileSync('./build/boc/lottery.boc'))[0];
@@ -99,8 +99,23 @@ class LotteryUint implements Contract {
 
     static createFromAddress(owner: Slice, ecvrf: Slice) {
         const data = beginCell()
-        .storeUint(0, 64 + 64 + 256 + 256 + 256 + 32)
+        .storeUint(0, 64 + 64 + 256 + 256)
         .storeBit(1)
+        .storeDict(Dictionary.empty(Dictionary.Keys.Int(64), {
+            serialize(_src, builder) {
+                builder.storeUint(SendMode.PAY_GAS_SEPARATELY, 8);
+                builder.storeRef(beginCell()
+                .storeUint(0, 64 + 4 + 64)
+                .storeCoins(0)
+                .storeSlice(owner)
+                .endCell());
+            },
+            parse(src) {
+                let sendMode = src.loadUint(8);
+                let message = src.loadRef().beginParse();
+                return { sendMode, message };
+            },
+        }))
         .storeRef(
             beginCell()
             .storeSlice(owner)
@@ -114,18 +129,18 @@ class LotteryUint implements Contract {
         return new LotteryUint(contractAddress(0, init), init);
     }
 
-    async sendDeploy(provider: ContractProvider, via: Sender) {
+    async sendDeploy(provider: ContractProvider, via: Sender, value: bigint) {
         await provider.internal(via, {
-            value: toNano('1.0'),
-            body: beginCell().endCell(),
+            value: value,
+            body: beginCell().storeUint(1, 32).storeAddress(via.address).storeCoins(value).endCell(),
             bounce: false
         });
     }
 
-    async sendPlayerBet(provider: ContractProvider, via: Sender, value: bigint, player: Slice) {
+    async sendPlayerBet(provider: ContractProvider, via: Sender, value: bigint, player: Address) {
         await provider.internal(via, {
-            value: toNano('0.1'),
-            body: beginCell().storeSlice(player).storeCoins(value).endCell(),
+            value: value,
+            body: beginCell().storeUint(0, 32).storeAddress(player).storeCoins(value).endCell(),
             sendMode: SendMode.PAY_GAS_SEPARATELY
         });
     }
@@ -134,8 +149,13 @@ class LotteryUint implements Contract {
         await provider.internal(via, {
             value: value,
             body: beginCell().storeUint(0x069CECA8, 32).storeUint(random, 256).endCell(),
+            // body: beginCell().storeUint(0x069CECA8, 32).storeAddress(via.address).storeCoins(value).endCell(),
             sendMode: SendMode.PAY_GAS_SEPARATELY
         });
+    }
+
+    async getBalance(provider: ContractProvider) {
+        return (await provider.get('balance', [])).stack.readNumber();
     }
 }
 
@@ -146,6 +166,7 @@ describe("lottery test", () => {
     const secretEcvrf = 123456n;
     const keyReplay = randomTestKey('ecvrf-coordinator');
     let deployer: SandboxContract<TreasuryContract>;
+    const initialBet = 10000000000n;
 
     beforeEach(async () => {
         blockchain = await Blockchain.create({ config: 'slim' });
@@ -159,7 +180,7 @@ describe("lottery test", () => {
             beginCell().storeAddress(deployer.address).asSlice(), 
             beginCell().storeAddress(ecvrf.address).asSlice()
         ));
-        await lottery.sendDeploy(deployer.getSender());
+        await lottery.sendDeploy(deployer.getSender(), initialBet * 4n + 1000000000n);
 
         await ecvrf.sendSubscribeRandom(deployer.getSender(), 610000000n, lottery.address);
     })
@@ -171,52 +192,36 @@ describe("lottery test", () => {
             beginCell().storeAddress(deployer.address).asSlice(),  
             beginCell().storeAddress(mockEcvrf.address).asSlice()
         ));
+        await lottery.sendDeploy(deployer.getSender(), initialBet * 4n + 1000000000n);
 
         const player1 = await blockchain.treasury('player1');
         const player2 = await blockchain.treasury('player2');
-        const initialBet = 100000000n;
-        
-        await deployer.send({
-            to: lottery.address,
-            value: initialBet * 2n + 1000000000n,
-            sendMode: SendMode.PAY_GAS_SEPARATELY
-        });
-        
-        await player1.send({
-            to: lottery.address,
-            value: initialBet,
-            sendMode: SendMode.PAY_GAS_SEPARATELY
-        })
-
-        await player2.send({
-            to: lottery.address,
-            value: initialBet,
-            sendMode: SendMode.PAY_GAS_SEPARATELY
+        await blockchain.setVerbosityForAddress(lottery.address, {
+            blockchainLogs: true,
+            vmLogs: 'vm_logs',
         })
 
         let rnd = 177;
         await lottery.sendRandomNumber(mockEcvrf.getSender(), 30000000n, rnd)
-
-        await player2.send({
-            to: lottery.address,
-            value: initialBet * 2n,
-            sendMode: SendMode.PAY_GAS_SEPARATELY
-        })
-
-        rnd = 176;
+        await lottery.sendPlayerBet(player1.getSender(), initialBet, player1.address)
+        
+        rnd = 175;
         await lottery.sendRandomNumber(mockEcvrf.getSender(), 30000000n, rnd)
+        await lottery.sendPlayerBet(player2.getSender(), initialBet, player2.address)
+        
+        rnd = 177;
+        await lottery.sendRandomNumber(mockEcvrf.getSender(), 30000000n, rnd)
+        await lottery.sendPlayerBet(player2.getSender(), initialBet, player2.address)
 
-        await player1.send({
-            to: lottery.address,
-            value: initialBet * 2n,
-            sendMode: SendMode.PAY_GAS_SEPARATELY
-        })
+        rnd = 177;
+        await lottery.sendRandomNumber(mockEcvrf.getSender(), 30000000n, rnd)
+        await lottery.sendPlayerBet(player1.getSender(), initialBet, player1.address)
 
         rnd = 173;
         await lottery.sendRandomNumber(mockEcvrf.getSender(), 30000000n, rnd)
 
         const player1FinalBalance = await player1.getBalance();
         const player2FinalBalance = await player2.getBalance();
-        expect(player1FinalBalance - player2FinalBalance).to.be.equal(initialBet);
+        expect(player2FinalBalance - player1FinalBalance).to.be.equal(initialBet * 3n);
     })
 })

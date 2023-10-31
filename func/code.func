@@ -28,13 +28,12 @@ cell remove_old_orders(cell orders, int o_seqno) {
   return orders;
 }
 
-_ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, slice owner, slice ecvrf, slice player, int random_locked, int player_coins, cell orders) inline {
+_ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, slice owner, slice ecvrf, slice player, int random_locked, int player_coins, cell orders) inline {
   return begin_cell()             ;; FIRST CELL
     .store_uint(o_seqno, 64)      ;; 64 bit  | order seqno
     .store_uint(n_wins, 64)       ;; 64 bit  | number of wins
     .store_uint(in_amount, 256)   ;; 256 bit | ingoing amount
     .store_uint(out_amount, 256)  ;; 256 bit | outgoing amount
-    .store_uint(hash, 256)        ;; 256 bit | seed salt
     .store_uint(random_locked, 1) ;; 1 bit  | bool random_locked
     .store_dict(orders)           ;; bit+ref | last orders dict
     .store_ref(
@@ -49,7 +48,7 @@ _ pack_state(int o_seqno, int n_wins, int in_amount, int out_amount, int hash, s
 
 _ unpack_state() inline {
   var ds = get_data().begin_parse();
-  slice stats = ds~load_bits(896 + 64 + 32);
+  slice stats = ds~load_bits(640 + 1);
   cell orders = ds~load_dict();
   slice adrs = ds.preload_ref().begin_parse();
   var unpacked = (stats, orders, adrs~load_msg_addr(), adrs~load_msg_addr(), adrs~load_msg_addr(), adrs~load_coins());
@@ -57,7 +56,7 @@ _ unpack_state() inline {
 }
 
 _ unpack_stats(slice stats) inline {
-  var unpacked = (stats~load_uint(64), stats~load_uint(64), stats~load_uint(256), stats~load_uint(256), stats~load_uint(256), stats~load_uint(1));
+  var unpacked = (stats~load_uint(64), stats~load_uint(64), stats~load_uint(256), stats~load_uint(256), stats~load_uint(1));
   return unpacked;
 }
 
@@ -84,8 +83,8 @@ _ unpack_order(slice order) inline_ref {
 }
 
 () recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+  int op = in_msg_body~load_uint(32);
   slice cs = in_msg_full.begin_parse();
-  int msg_hash = slice_hash(cs);
 
   int flags = cs~load_uint(4);
   if (flags & 1) { ;; ignore all bounced messages
@@ -100,24 +99,19 @@ _ unpack_order(slice order) inline_ref {
     return ();
   }
 
-  int op = in_msg_body~load_uint(32);
-
   ;; new random number received from vrf
-  if (op == 0x069CECA8 & slices_equal?(sender, ecvrf)) {
-    int vrfrand = in_msg_body~load_uint(256);
-    (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int random_locked) = unpack_stats(stats);
-    int rand_no = vrfrand % 10;
-    random_locked = 1;
+  if (op == 0x069CECA8) {
+    if(slices_equal?(sender, ecvrf) != 1) {
+      return ();
+    }
 
-    ;; Calculating new hash
-    hash = cell_hash(begin_cell()
-      .store_uint(hash, 256)
-      .store_uint(msg_hash, 256)
-      .store_uint(cur_lt(), 64)
-      .store_uint(now(), 64)
-      .end_cell()
-    );
-    randomize(hash);
+    if player_coins == 0 {
+      return ();
+    }
+
+    int vrfrand = in_msg_body~load_uint(256);
+    (int o_seqno, int n_wins, int in_amount, int out_amount, int random_locked) = unpack_stats(stats);
+    int rand_no = vrfrand % 10;
 
     if (rand_no >= 4) {
       builder order = pack_order(o_seqno, 3, now(), player_coins, player);
@@ -136,37 +130,37 @@ _ unpack_order(slice order) inline_ref {
 
       send_tons(player, 2 * player_coins, 3);
     }
-
-    set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, player, random_locked, 0, orders));
+    random_locked = 1;
+    set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, owner, ecvrf, player, random_locked, 0, orders));
     return ();
   }
 
-  (int o_seqno, int n_wins, int in_amount, int out_amount, int hash, int random_locked) = unpack_stats(stats);
+  (int o_seqno, int n_wins, int in_amount, int out_amount, int random_locked) = unpack_stats(stats);
   (slice new_player, int o_amount) = (in_msg_body~load_msg_addr(), in_msg_body~load_coins());
 
   if (random_locked == 0) {
-    send_tons(new_player, msg_value, 2);
+    send_tons(new_player, o_amount, 2);
     return ();
+  }
+
+  ;; lottery inactive if balance < 2 stake + 1 TON
+  if (my_tons() < o_amount * 2 + 1000000000) {
+      send_tons(new_player, o_amount, 2);
+      return ();
   }
 
   ;; min stake 1 TON
   throw_unless(333, msg_value > 999999999);
 
   ;; lottery active if balance > 2 stake + 1 TON
-  throw_unless(666, my_tons() > msg_value * 2 + 1000000000);
-
-  ;; lottery inactive if balance < 2 stake + 1 TON
-  if (my_tons() < o_amount * 2 + 1000000000) {
-      send_tons(new_player, msg_value, 2);
-      return ();
-  }
+  throw_unless(666, my_tons() > o_amount * 2 + 1000000000);
   
   ;; subscribe to ecvrf 
   send_raw_message(
     begin_cell()
     .store_uint(0x18, 6)
     .store_slice(ecvrf)
-    .store_coins(610000000)
+    .store_coins(610000)
     .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
     .store_uint(0xAB4C4859, 32)
     .store_slice(my_address())
@@ -178,7 +172,7 @@ _ unpack_order(slice order) inline_ref {
   o_seqno += 1;
 
   random_locked = 0;
-  set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, hash, owner, ecvrf, new_player, random_locked, o_amount, orders));
+  set_data(pack_state(o_seqno, n_wins, in_amount, out_amount, owner, ecvrf, new_player, random_locked, o_amount, orders));
   
   return();
 }
@@ -189,25 +183,25 @@ tuple order_tuple(int id, int status, int timestamp, int amount, int wc, int add
 
 int get_order_seqno() method_id {
   (slice stats, _, _, _, _, _) = unpack_state();
-  (int o_seqno, _, _, _, _, _) = unpack_stats(stats);
+  (int o_seqno, _, _, _, _) = unpack_stats(stats);
   return o_seqno;
 }
 
 int get_number_of_wins() method_id {
   (slice stats, _, _, _, _, _) = unpack_state();
-  (_, int n_wins, _, _, _, _) = unpack_stats(stats);
+  (_, int n_wins, _, _, _) = unpack_stats(stats);
   return n_wins;
 }
 
 int get_incoming_amount() method_id {
   (slice stats, _, _, _, _, _) = unpack_state();
-  (_, _, int in_amount, _, _, _) = unpack_stats(stats);
+  (_, _, int in_amount, _, _) = unpack_stats(stats);
   return in_amount;
 }
 
 int get_outgoing_amount() method_id {
   (slice stats, _, _, _, _, _) = unpack_state();
-  (_, _, _, int out_amount, _, _) = unpack_stats(stats);
+  (_, _, _, int out_amount, _) = unpack_stats(stats);
   return out_amount;
 }
 
@@ -224,12 +218,6 @@ var get_orders() method_id {
     }
   } until (~ f)
   return l;
-}
-
-int get_pubkey() method_id {
-  (slice stats, _, _, _, _, _) = unpack_state();
-  (_, _, _, _, int hash, _) = unpack_stats(stats);
-  return hash;
 }
 
 int balance() method_id {
