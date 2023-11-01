@@ -101,7 +101,7 @@ _ unpack_order(slice order) inline_ref {
 
   ;; new random number received from vrf
   if (op == 0x069CECA8) {
-    if(slices_equal?(sender, ecvrf) != 1) {
+    if(slices_equal?(sender, ecvrf) == 0) {
       return ();
     }
 

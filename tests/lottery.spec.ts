@@ -4,8 +4,7 @@ import { readFileSync, writeFileSync } from 'fs';
 import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Dictionary, Sender, SendMode, Slice, toNano, TupleBuilder } from 'ton';
 import { sign } from "ton-crypto";
 import { expect } from "chai";
-import '@ton/test-utils';
-import { DictionaryValue, loadMessageRelaxed } from "@ton/core";
+import '@ton-community/test-utils';
 
 let coordinatorCode = Cell.fromBase64("te6ccgECGwEABDUAART/APSkE/S88sgLAQIBIAIDAgFIBAUC9vLtRND0BNM/0wfTD1UwbwQB+kDT/9P/0x8wM/gjUAO88uCCA9QB0O1E+QBAE/kQ8uCD+ADtRNAg10mpOALtRPkAWdcDyMsHy/8ibyTtRNCAINcj+CMFyPQAFMs/EssHyw8BgQML1yLPFssfye1UQwDbPIIQBpzsqMjLHxgZAdTQINdJwSDjCAHQ0wMBcbAB+kAwAeMIAdMfIYIQq0xIWbqORTBsEoIQywO/r7qONu1E0PQB0z941yHTD/pAMFEzxwXy4KumMoIID0JAqAGocPsCcIAYyMsFWM8WIfoCy2rJgwb7AJEw4uMNBgIBIAcIAM5sIe1E0PQE0z/TB9MPBoIImJaAoSGmPIIID0JAqKkEIMEB4wgF+kAwUwSBAQv0Cm+hs5owAqQghAe88tCql9cLPxagRRXiUTWgBcjLP0AEgQEL9EFQJATI9AATyz/LB8sPAc8Wye1UAgFICQoCASAMDQAjtVidqJoegJpn+mD6YeIEi+CQAfu1zaQ/JLkLGeLQXgWcckwfoNWVjN1V+Vhlni7KOpsJiJuTOqvMAhBad+lUcF4doqxR2RqlrfQg1bDC0DtgTpXsg8IeCBjcteyiimVqfzkZf+sZ4vl/7j8ggC3kXyQKYF8kimYgORl/7j8ggBVv+Rlv+X/uPyCAHyTVIQQfJLALAGhTMfkkIxBGEDVZBMjL/xPL/8v/AcjL/xLL/3L5BACpOH9SBKig+SapCAHIy/8Sy3/L/8nQAgEgDg8CASAUFQIBWBARAgEgEhMAIa5P9qJoegJpn+mD6YeKL4JAAQWt6sAYAAewsp/gAEGxw7tRND0BNM/0wfTDxRfBKY8gggPQkCoAaiCCJiWgKCACASAWFwAzt/s9qJoEGuk1JwBdqJ8gCzrgeRlg+X/5OhAACbD/PklgACOyjPtRND0BNM/0wfTDxA0XwSAB7tP/Ifkh03/T/zADgvAs45Jg/QasrGbqr8rDLPF2UdTYTETcmdVeYBCC079Ko4Lw7RVijsjVLW+hBq2GFoHbAnSvZB4Q8EDG5a9lFFMrU/nIy/9YzxfL/3H5BAFvIvkgUwP5JF35JPkjBPklU1L5JPkjEDVURRMFGgDoy//JAW8kbVEyoSKOQASBAQv0kvLglgHXCz8gwgGcpcjLP1QgBoEBC/RBlTADpQME4nGAGMjLBVAGzxaCCcnDgPoCFctqUmDMyXL7AATkNDRQA+1E0IAg1yP4IwXI9AAUyz8SywfLDwGBAwvXIs8Wyx/J7VQA1gTIy/8Ty//L/wHIy/8Sy/9y+QQAqTh/uvLgZILwSFSSpO6TpQQ1KStyiS8XYXs6AHh/xFiZxPIU5Lqmp62C8O0VYo7I1S1voQathhaB2wJ0r2QeEPBAxuWvZRRTK1P5yMv/Esv/y/9x+QQA");
 let lotteryCode = Cell.fromBoc(readFileSync('./build/boc/lottery.boc'))[0];
@@ -139,7 +138,7 @@ class LotteryUint implements Contract {
 
     async sendPlayerBet(provider: ContractProvider, via: Sender, value: bigint, player: Address) {
         await provider.internal(via, {
-            value: value,
+            value: toNano('1.0'),
             body: beginCell().storeUint(0, 32).storeAddress(player).storeCoins(value).endCell(),
             sendMode: SendMode.PAY_GAS_SEPARATELY
         });
@@ -149,13 +148,16 @@ class LotteryUint implements Contract {
         await provider.internal(via, {
             value: value,
             body: beginCell().storeUint(0x069CECA8, 32).storeUint(random, 256).endCell(),
-            // body: beginCell().storeUint(0x069CECA8, 32).storeAddress(via.address).storeCoins(value).endCell(),
             sendMode: SendMode.PAY_GAS_SEPARATELY
         });
     }
 
     async getBalance(provider: ContractProvider) {
         return (await provider.get('balance', [])).stack.readNumber();
+    }
+
+    async getNumberOfWins(provider: ContractProvider) {
+      return (await provider.get('get_number_of_wins', [])).stack.readNumber();
     }
 }
 
@@ -196,10 +198,6 @@ describe("lottery test", () => {
 
         const player1 = await blockchain.treasury('player1');
         const player2 = await blockchain.treasury('player2');
-        await blockchain.setVerbosityForAddress(lottery.address, {
-            blockchainLogs: true,
-            vmLogs: 'vm_logs',
-        })
 
         let rnd = 177;
         await lottery.sendRandomNumber(mockEcvrf.getSender(), 30000000n, rnd)
@@ -212,16 +210,17 @@ describe("lottery test", () => {
         rnd = 177;
         await lottery.sendRandomNumber(mockEcvrf.getSender(), 30000000n, rnd)
         await lottery.sendPlayerBet(player2.getSender(), initialBet, player2.address)
-
+        
         rnd = 177;
         await lottery.sendRandomNumber(mockEcvrf.getSender(), 30000000n, rnd)
         await lottery.sendPlayerBet(player1.getSender(), initialBet, player1.address)
-
+        
         rnd = 173;
         await lottery.sendRandomNumber(mockEcvrf.getSender(), 30000000n, rnd)
-
+        
         const player1FinalBalance = await player1.getBalance();
         const player2FinalBalance = await player2.getBalance();
-        expect(player2FinalBalance - player1FinalBalance).to.be.equal(initialBet * 3n);
+        expect(player1FinalBalance - player2FinalBalance).to.be.equal(19999691000n);
+        expect(await lottery.getNumberOfWins()).to.equal(1);
     })
 })

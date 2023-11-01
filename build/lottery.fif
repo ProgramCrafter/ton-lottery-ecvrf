@@ -316,7 +316,7 @@ PROGRAM{
       s8 POP	//  player in_msg_body sender player_coins stats orders owner ecvrf
       s5 s5 XCPU	//  player in_msg_body ecvrf player_coins stats orders owner sender ecvrf
       SDEQ	//  player in_msg_body ecvrf player_coins stats orders owner _28
-      1 NEQINT	//  player in_msg_body ecvrf player_coins stats orders owner _30
+      0 EQINT	//  player in_msg_body ecvrf player_coins stats orders owner _30
       IFJMP:<{	//  player in_msg_body ecvrf player_coins stats orders owner
         7 BLKDROP	// 
       }>	//  player in_msg_body ecvrf player_coins stats orders owner
