@@ -1,0 +1,24 @@
+{
+  "dependencies": {
+    "@orbs-network/ton-access": "^2.3.3",
+    "@ton-community/func-js": "^0.6.3-tvmbeta.1",
+    "@ton-community/func-js-bin": "^0.4.5-tvmbeta.1",
+    "@ton-community/sandbox": "^0.12.0-tvmbeta.1",
+    "@ton/sandbox": "^0.13.1",
+    "dotenv": "^16.1.4",
+    "ton": "^13.5.0",
+    "ton-crypto": "^3.2.0",
+    "ts-node": "^10.9.1",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@ton-community/test-utils": "^0.2.0",
+    "@ton/test-utils": "^0.3.1",
+    "@types/chai": "^4.3.9",
+    "@types/mocha": "^10.0.3",
+    "@types/node": "^20.2.6",
+    "chai": "^4.3.10",
+    "mocha": "^10.2.0",
+    "prando": "^6.0.1"
+  }
+}

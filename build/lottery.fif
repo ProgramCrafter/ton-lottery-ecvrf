@@ -1,5 +1,5 @@
 "Asm.fif" include
-// automatically generated from `C:\Users\Tigr\AppData\Local\toncli\toncli\func-libs\error_codes.func` `C:\Users\Tigr\AppData\Local\toncli\toncli\func-libs\math.func` `C:\Users\Tigr\AppData\Local\toncli\toncli\func-libs\stdlib.func` `D:\TON_FunC\ecvrf-lottery\func\code.func` 
+// automatically generated from `/Users/prajjawalkhandelwal/Library/Application Support/toncli/func-libs/error_codes.func` `/Users/prajjawalkhandelwal/Library/Application Support/toncli/func-libs/math.func` `/Users/prajjawalkhandelwal/Library/Application Support/toncli/func-libs/stdlib.func` `/Users/prajjawalkhandelwal/Prajjawal/ton-lottery-ecvrf/func/code.func` 
 PROGRAM{
   DECLPROC power
   DECLPROC sqrt
@@ -19,7 +19,6 @@ PROGRAM{
   109088 DECLMETHOD get_incoming_amount
   113619 DECLMETHOD get_outgoing_amount
   67442 DECLMETHOD get_orders
-  112663 DECLMETHOD get_pubkey
   104128 DECLMETHOD balance
   power PROCREF:<{
     //  x exponent
@@ -202,41 +201,45 @@ PROGRAM{
     DROP	//  orders
   }>
   pack_state PROCINLINE:<{
-    //  o_seqno n_wins in_amount out_amount hash owner1 owner2 echo orders
-    NEWC	//  o_seqno n_wins in_amount out_amount hash owner1 owner2 echo orders _9
-    s0 s4 XCHG2	//  o_seqno n_wins in_amount out_amount hash orders owner2 echo _9 owner1
-    STSLICER	//  o_seqno n_wins in_amount out_amount hash orders owner2 echo _10
-    ROT	//  o_seqno n_wins in_amount out_amount hash orders echo _10 owner2
-    STSLICER	//  o_seqno n_wins in_amount out_amount hash orders echo _11
-    SWAP	//  o_seqno n_wins in_amount out_amount hash orders _11 echo
-    STSLICER	//  o_seqno n_wins in_amount out_amount hash orders _12
-    ENDC	//  o_seqno n_wins in_amount out_amount hash orders _13
+    //  o_seqno n_wins in_amount out_amount owner ecvrf player random_locked player_coins orders
+    NEWC	//  o_seqno n_wins in_amount out_amount owner ecvrf player random_locked player_coins orders _10
+    s0 s6 XCHG2	//  o_seqno n_wins in_amount out_amount orders ecvrf player random_locked player_coins _10 owner
+    STSLICER	//  o_seqno n_wins in_amount out_amount orders ecvrf player random_locked player_coins _11
+    s0 s4 XCHG2	//  o_seqno n_wins in_amount out_amount orders player_coins player random_locked _11 ecvrf
+    STSLICER	//  o_seqno n_wins in_amount out_amount orders player_coins player random_locked _12
+    ROT	//  o_seqno n_wins in_amount out_amount orders player_coins random_locked _12 player
+    STSLICER	//  o_seqno n_wins in_amount out_amount orders player_coins random_locked _13
+    ROT	//  o_seqno n_wins in_amount out_amount orders random_locked _13 player_coins
+    STVARUINT16	//  o_seqno n_wins in_amount out_amount orders random_locked _14
+    ENDC	//  o_seqno n_wins in_amount out_amount orders random_locked _15
     s0 s6 XCHG
-    NEWC	//  _13 n_wins in_amount out_amount hash orders o_seqno _14
-    64 STU	//  _13 n_wins in_amount out_amount hash orders _16
-    s1 s5 XCHG	//  _13 orders in_amount out_amount hash n_wins _16
-    64 STU	//  _13 orders in_amount out_amount hash _18
-    s1 s3 XCHG	//  _13 orders hash out_amount in_amount _18
-    256 STU	//  _13 orders hash out_amount _20
-    256 STU	//  _13 orders hash _22
-    256 STU	//  _13 orders _24
-    STDICT	//  _13 _25
-    STREF	//  _26
-    ENDC	//  _27
+    NEWC	//  _15 n_wins in_amount out_amount orders random_locked o_seqno _16
+    64 STU	//  _15 n_wins in_amount out_amount orders random_locked _18
+    s1 s5 XCHG	//  _15 random_locked in_amount out_amount orders n_wins _18
+    64 STU	//  _15 random_locked in_amount out_amount orders _20
+    s1 s3 XCHG	//  _15 random_locked orders out_amount in_amount _20
+    256 STU	//  _15 random_locked orders out_amount _22
+    256 STU	//  _15 random_locked orders _24
+    s1 s2 XCHG	//  _15 orders random_locked _24
+    1 STU	//  _15 orders _26
+    STDICT	//  _15 _27
+    STREF	//  _28
+    ENDC	//  _29
   }>
   unpack_state PROCINLINE:<{
     // 
     c4 PUSH	//  _1
     CTOS	//  ds
-    896 PUSHINT	//  ds _5=896
+    641 PUSHINT	//  ds _7
     LDSLICEX	//  stats ds
     LDDICT	//  stats orders ds
-    PLDREF	//  stats orders _11
+    PLDREF	//  stats orders _13
     CTOS	//  stats orders adrs
-    LDMSGADDR	//  stats orders _14 adrs
-    LDMSGADDR	//  stats orders _14 _16 adrs
-    LDMSGADDR	//  stats orders _14 _16 _34 _33
-    DROP	//  unpacked unpacked unpacked unpacked unpacked
+    LDMSGADDR	//  stats orders _16 adrs
+    LDMSGADDR	//  stats orders _16 _18 adrs
+    LDMSGADDR	//  stats orders _16 _18 _20 adrs
+    LDVARUINT16	//  stats orders _16 _18 _20 _41 _40
+    DROP	//  unpacked unpacked unpacked unpacked unpacked unpacked
   }>
   unpack_stats PROCINLINE:<{
     //  stats
@@ -244,7 +247,7 @@ PROGRAM{
     64 LDU	//  _2 _5 stats
     256 LDU	//  _2 _5 _8 stats
     256 LDU	//  _2 _5 _8 _11 stats
-    256 LDU	//  _2 _5 _8 _11 _31 _30
+    1 LDU	//  _2 _5 _8 _11 _31 _30
     DROP	//  unpacked unpacked unpacked unpacked unpacked
   }>
   pack_order PROCINLINE:<{
@@ -287,217 +290,224 @@ PROGRAM{
   }>
   recv_internal PROC:<{
     //  msg_value in_msg_full in_msg_body
-    SWAP	//  msg_value in_msg_body in_msg_full
-    CTOS	//  msg_value in_msg_body cs
-    DUP	//  msg_value in_msg_body cs cs
-    HASHSU	//  msg_value in_msg_body cs msg_hash
-    SWAP	//  msg_value in_msg_body msg_hash cs
-    4 LDU	//  msg_value in_msg_body msg_hash flags cs
+    32 LDU	//  msg_value in_msg_full op in_msg_body
+    s0 s2 XCHG	//  msg_value in_msg_body op in_msg_full
+    CTOS	//  msg_value in_msg_body op cs
+    4 LDU	//  msg_value in_msg_body op flags cs
     SWAP
-    1 PUSHINT	//  msg_value in_msg_body msg_hash cs flags _11=1
-    AND	//  msg_value in_msg_body msg_hash cs _12
-    IFJMP:<{	//  msg_value in_msg_body msg_hash cs
+    1 PUSHINT	//  msg_value in_msg_body op cs flags _13=1
+    AND	//  msg_value in_msg_body op cs _14
+    IFJMP:<{	//  msg_value in_msg_body op cs
       4 BLKDROP	// 
-    }>	//  msg_value in_msg_body msg_hash cs
-    LDMSGADDR	//  msg_value in_msg_body msg_hash _151 _150
-    DROP	//  msg_value in_msg_body msg_hash sender
-    unpack_state INLINECALLDICT	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo
-    s5 s2 PUSH2	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo sender owner1
-    SDEQ	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo _22
-    s6 s2 PUSH2	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo _22 sender owner2
-    SDEQ	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo _22 _23
-    OR	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo _24
-    IFJMP:<{	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo
-      9 BLKDROP	// 
-    }>	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo
-    s5 s0 PUSH2	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo sender echo
-    SDEQ	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo _25
-    IFJMP:<{	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo
-      s5 POP	//  msg_value in_msg_body msg_hash echo stats orders owner1 owner2
-      s0 s6 XCHG	//  msg_value owner2 msg_hash echo stats orders owner1 in_msg_body
-      LDMSGADDR	//  msg_value owner2 msg_hash echo stats orders owner1 _28 in_msg_body
-      LDVARUINT16	//  msg_value owner2 msg_hash echo stats orders owner1 _28 _160 _159
-      DROP	//  msg_value owner2 msg_hash echo stats orders owner1 player o_amount
-      BALANCE
-      FIRST	//  msg_value owner2 msg_hash echo stats orders owner1 player o_amount _32
-      OVER	//  msg_value owner2 msg_hash echo stats orders owner1 player o_amount _32 o_amount
-      1 LSHIFT#	//  msg_value owner2 msg_hash echo stats orders owner1 player o_amount _32 _34
-      1000000000 PUSHINT	//  msg_value owner2 msg_hash echo stats orders owner1 player o_amount _32 _34 _35=1000000000
-      ADD	//  msg_value owner2 msg_hash echo stats orders owner1 player o_amount _32 _36
-      LESS	//  msg_value owner2 msg_hash echo stats orders owner1 player o_amount _37
-      IF:<{	//  msg_value owner2 msg_hash echo stats orders owner1 player o_amount
-        s1 s7 XCHG
-        7 BLKDROP	//  msg_value player
-        SWAP
-        2 PUSHINT	//  player msg_value _38=2
-        send_tons INLINECALLDICT
-      }>ELSE<{	//  msg_value owner2 msg_hash echo stats orders owner1 player o_amount
-        s8 POP	//  o_amount owner2 msg_hash echo stats orders owner1 player
-        s0 s3 XCHG	//  o_amount owner2 msg_hash echo player orders owner1 stats
-        unpack_stats INLINECALLDICT	//  o_amount owner2 msg_hash echo player orders owner1 o_seqno n_wins in_amount out_amount hash
-        NOW	//  o_amount owner2 msg_hash echo player orders owner1 o_seqno n_wins in_amount out_amount hash _46
-        LTIME	//  o_amount owner2 msg_hash echo player orders owner1 o_seqno n_wins in_amount out_amount hash _46 _47
-        s0 s2 XCHG
-        NEWC	//  o_amount owner2 msg_hash echo player orders owner1 o_seqno n_wins in_amount out_amount _47 _46 hash _48
-        256 STU	//  o_amount owner2 msg_hash echo player orders owner1 o_seqno n_wins in_amount out_amount _47 _46 _50
-        s1 s11 XCHG	//  o_amount owner2 _46 echo player orders owner1 o_seqno n_wins in_amount out_amount _47 msg_hash _50
-        256 STU	//  o_amount owner2 _46 echo player orders owner1 o_seqno n_wins in_amount out_amount _47 _52
-        64 STU	//  o_amount owner2 _46 echo player orders owner1 o_seqno n_wins in_amount out_amount _54
-        s1 s9 XCHG	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount _46 _54
-        64 STU	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount _56
-        ENDC	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount _57
-        HASHCU	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount hash
-        DUP	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount hash hash
-        ADDRAND
-        10 PUSHINT	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount hash _60=10
-        RAND	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount hash _61
-        3 GTINT	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount hash _63
-        IF:<{	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount hash
-          3 PUSHINT	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount hash _65=3
-          NOW	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount hash _65=3 _66
-          s5 PUSH
-          s13 s3 PUXC
-          s0 s10 XCHG	//  o_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins in_amount o_seqno _65=3 _66 o_amount player
-          pack_order INLINECALLDICT	//  o_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins in_amount order
-          s0 s3 s5 XCPUXC
-          64 PUSHINT	//  o_amount owner2 out_amount echo hash in_amount owner1 o_seqno n_wins order o_seqno orders _69=64
-          DICTUSETB	//  o_amount owner2 out_amount echo hash in_amount owner1 o_seqno n_wins orders
-          s4 s9 XCPU	//  o_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins in_amount o_amount
-          ADD	//  o_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins in_amount
-          s9 PUSH
-          3000000000 PUSHINT	//  o_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins in_amount o_amount _72=3000000000
-          GREATER	//  o_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins in_amount _73
-          IF:<{	//  o_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins in_amount
-            s9 PUSH
-            6 PUSHINT	//  o_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins in_amount o_amount _74=6
-            DIV	//  o_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins in_amount _75
-            s4 s(-1) PUXC
-            3 PUSHINT	//  o_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins in_amount owner1 _75 _76=3
-            send_tons INLINECALLDICT
-            s0 s9 XCHG
-            6 PUSHINT	//  in_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins o_amount _78=6
-            DIV	//  in_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins _79
-            s8 s(-1) PUXC
-            3 PUSHINT	//  in_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins owner2 _79 _80=3
-            send_tons INLINECALLDICT
-          }>ELSE<{
-            s9 POP	//  in_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins
-          }>
-        }>ELSE<{	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount hash
-          s3 PUSH
-          2 PUSHINT
-          NOW
-          s13 s9 PUSH2	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount hash o_seqno _83=2 _84 o_amount player
-          pack_order INLINECALLDICT	//  o_amount owner2 out_amount echo player orders owner1 o_seqno n_wins in_amount hash order
-          s0 s4 s6 XCPUXC
-          64 PUSHINT	//  o_amount owner2 out_amount echo player hash owner1 o_seqno n_wins in_amount order o_seqno orders _87=64
-          DICTUSETB	//  o_amount owner2 out_amount echo player hash owner1 o_seqno n_wins in_amount orders
-          s1 s10 XCPU	//  o_amount owner2 out_amount echo player hash owner1 o_seqno n_wins orders in_amount o_amount
-          ADD	//  o_amount owner2 out_amount echo player hash owner1 o_seqno n_wins orders in_amount
-          s10 PUSH	//  o_amount owner2 out_amount echo player hash owner1 o_seqno n_wins orders in_amount o_amount
-          1 LSHIFT#	//  o_amount owner2 out_amount echo player hash owner1 o_seqno n_wins orders in_amount _91
-          s1 s9 XCHG	//  o_amount owner2 in_amount echo player hash owner1 o_seqno n_wins orders out_amount _91
-          ADD	//  o_amount owner2 in_amount echo player hash owner1 o_seqno n_wins orders out_amount
-          s0 s2 XCHG	//  o_amount owner2 in_amount echo player hash owner1 o_seqno out_amount orders n_wins
-          INC	//  o_amount owner2 in_amount echo player hash owner1 o_seqno out_amount orders n_wins
-          s0 s10 XCHG	//  n_wins owner2 in_amount echo player hash owner1 o_seqno out_amount orders o_amount
-          1 LSHIFT#	//  n_wins owner2 in_amount echo player hash owner1 o_seqno out_amount orders _96
-          s1 s6 XCHG
-          3 PUSHINT	//  n_wins owner2 in_amount echo orders hash owner1 o_seqno out_amount player _96 _97=3
+    }>	//  msg_value in_msg_body op cs
+    unpack_state INLINECALLDICT	//  msg_value in_msg_body op cs stats orders owner ecvrf player player_coins
+    s0 s6 XCHG	//  msg_value in_msg_body op player_coins stats orders owner ecvrf player cs
+    LDMSGADDR	//  msg_value in_msg_body op player_coins stats orders owner ecvrf player _166 _165
+    DROP	//  msg_value in_msg_body op player_coins stats orders owner ecvrf player sender
+    s0 s3 PUSH2	//  msg_value in_msg_body op player_coins stats orders owner ecvrf player sender sender owner
+    SDEQ	//  msg_value in_msg_body op player_coins stats orders owner ecvrf player sender _25
+    IFJMP:<{	//  msg_value in_msg_body op player_coins stats orders owner ecvrf player sender
+      10 BLKDROP	// 
+    }>	//  msg_value in_msg_body op player_coins stats orders owner ecvrf player sender
+    s0 s7 XCHG
+    110947496 PUSHINT	//  msg_value in_msg_body sender player_coins stats orders owner ecvrf player op _26=110947496
+    EQUAL	//  msg_value in_msg_body sender player_coins stats orders owner ecvrf player _27
+    IFJMP:<{	//  msg_value in_msg_body sender player_coins stats orders owner ecvrf player
+      s8 POP	//  player in_msg_body sender player_coins stats orders owner ecvrf
+      s5 s5 XCPU	//  player in_msg_body ecvrf player_coins stats orders owner sender ecvrf
+      SDEQ	//  player in_msg_body ecvrf player_coins stats orders owner _28
+      0 EQINT	//  player in_msg_body ecvrf player_coins stats orders owner _30
+      IFJMP:<{	//  player in_msg_body ecvrf player_coins stats orders owner
+        7 BLKDROP	// 
+      }>	//  player in_msg_body ecvrf player_coins stats orders owner
+      s3 PUSH	//  player in_msg_body ecvrf player_coins stats orders owner player_coins
+      0 EQINT	//  player in_msg_body ecvrf player_coins stats orders owner _32
+      IFJMP:<{	//  player in_msg_body ecvrf player_coins stats orders owner
+        7 BLKDROP	// 
+      }>	//  player in_msg_body ecvrf player_coins stats orders owner
+      s0 s5 XCHG	//  player owner ecvrf player_coins stats orders in_msg_body
+      256 LDU	//  player owner ecvrf player_coins stats orders _168 _167
+      DROP	//  player owner ecvrf player_coins stats orders vrfrand
+      s0 s2 XCHG	//  player owner ecvrf player_coins vrfrand orders stats
+      unpack_stats INLINECALLDICT	//  player owner ecvrf player_coins vrfrand orders _169 _170 _171 _172 _173
+      DROP	//  player owner ecvrf player_coins vrfrand orders o_seqno n_wins in_amount out_amount
+      s0 s5 XCHG
+      10 PUSHINT	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount vrfrand _44=10
+      MOD	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount rand_no
+      3 GTINT	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount _47
+      IF:<{	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount
+        s2 PUSH
+        3 PUSHINT
+        NOW
+        s8 s11 PUSH2	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount o_seqno _49=3 _50 player_coins player
+        pack_order INLINECALLDICT	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount order
+        s0 s3 s4 XCPUXC
+        64 PUSHINT	//  player owner ecvrf player_coins out_amount in_amount o_seqno n_wins order o_seqno orders _53=64
+        DICTUSETB	//  player owner ecvrf player_coins out_amount in_amount o_seqno n_wins orders
+        s3 s5 XCPU	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount player_coins
+        ADD	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount
+        s5 PUSH
+        3000000000 PUSHINT	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount player_coins _56=3000000000
+        GREATER	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount _57
+        IF:<{	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount
+          s0 s5 XCHG
+          6 PUSHINT	//  player owner ecvrf in_amount out_amount orders o_seqno n_wins player_coins _58=6
+          DIV	//  player owner ecvrf in_amount out_amount orders o_seqno n_wins _59
+          s7 s(-1) PUXC
+          3 PUSHINT	//  player owner ecvrf in_amount out_amount orders o_seqno n_wins owner _59 _60=3
           send_tons INLINECALLDICT
-          s0 s6 XCHG
-          s0 s8 XCHG
-          s3 s4 XCHG	//  in_amount owner2 out_amount echo hash orders owner1 o_seqno n_wins
+        }>ELSE<{
+          s5 POP	//  player owner ecvrf in_amount out_amount orders o_seqno n_wins
         }>
-        s3 s1 XCPU	//  in_amount owner2 out_amount echo hash n_wins owner1 o_seqno orders o_seqno
-        remove_old_orders CALLDICT	//  in_amount owner2 out_amount echo hash n_wins owner1 o_seqno orders
-        SWAP	//  in_amount owner2 out_amount echo hash n_wins owner1 orders o_seqno
-        INC	//  in_amount owner2 out_amount echo hash n_wins owner1 orders o_seqno
-        s0 s8 XCHG
-        s3 s7 XCHG
-        s0 s6 XCHG
-        s3 s5 s5 XCHG3	//  o_seqno n_wins in_amount out_amount hash owner1 owner2 echo orders
-        pack_state INLINECALLDICT	//  _102
-        c4 POP
+      }>ELSE<{	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount
+        s2 PUSH
+        2 PUSHINT
+        NOW
+        s8 s11 PUSH2	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount o_seqno _63=2 _64 player_coins player
+        pack_order INLINECALLDICT	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount order
+        s0 s3 s4 XCPUXC
+        64 PUSHINT	//  player owner ecvrf player_coins out_amount in_amount o_seqno n_wins order o_seqno orders _67=64
+        DICTUSETB	//  player owner ecvrf player_coins out_amount in_amount o_seqno n_wins orders
+        s3 s5 XCPU	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount player_coins
+        ADD	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount
+        s5 PUSH	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount player_coins
+        1 LSHIFT#	//  player owner ecvrf player_coins out_amount orders o_seqno n_wins in_amount _71
+        s1 s5 XCHG	//  player owner ecvrf player_coins in_amount orders o_seqno n_wins out_amount _71
+        ADD	//  player owner ecvrf player_coins in_amount orders o_seqno n_wins out_amount
+        SWAP	//  player owner ecvrf player_coins in_amount orders o_seqno out_amount n_wins
+        INC	//  player owner ecvrf player_coins in_amount orders o_seqno out_amount n_wins
+        s0 s5 XCHG	//  player owner ecvrf n_wins in_amount orders o_seqno out_amount player_coins
+        1 LSHIFT#	//  player owner ecvrf n_wins in_amount orders o_seqno out_amount _76
+        s8 s(-1) PUXC
+        3 PUSHINT	//  player owner ecvrf n_wins in_amount orders o_seqno out_amount player _76 _77=3
+        send_tons INLINECALLDICT
+        s0 s3 XCHG
+        s0 s4 XCHG	//  player owner ecvrf in_amount out_amount orders o_seqno n_wins
       }>
-    }>	//  msg_value in_msg_body msg_hash sender stats orders owner1 owner2 echo
-    s6 POP
-    4 BLKDROP
-    s2 POP	//  msg_value sender echo
-    MYADDR	//  msg_value sender echo _105
-    s2 s(-1) PUXC	//  msg_value sender echo sender _105
-    REWRITESTDADDR DROP SWAP REWRITESTDADDR DROP EQUAL	//  msg_value sender echo _106
-    111 THROWIFNOT
-    s2 PUSH
-    999999999 PUSHINT	//  msg_value sender echo msg_value _109=999999999
-    GREATER	//  msg_value sender echo _110
+      s7 s6 XCHG2
+      s4 s5 XCHG
+      s0 s3 XCHG
+      s0 s4 XCHG
+      1 PUSHINT
+      s0 s3 XCHG2
+      0 PUSHINT
+      SWAP	//  o_seqno n_wins in_amount out_amount owner ecvrf player random_locked=1 _80=0 orders
+      pack_state INLINECALLDICT	//  _81
+      c4 POP
+    }>	//  msg_value in_msg_body sender player_coins stats orders owner ecvrf player
+    DROP
+    s4 POP
+    s4 POP	//  msg_value in_msg_body owner ecvrf stats orders
+    SWAP	//  msg_value in_msg_body owner ecvrf orders stats
+    unpack_stats INLINECALLDICT	//  msg_value in_msg_body owner ecvrf orders o_seqno n_wins in_amount out_amount random_locked
+    s0 s8 XCHG	//  msg_value random_locked owner ecvrf orders o_seqno n_wins in_amount out_amount in_msg_body
+    LDMSGADDR	//  msg_value random_locked owner ecvrf orders o_seqno n_wins in_amount out_amount _91 in_msg_body
+    LDVARUINT16	//  msg_value random_locked owner ecvrf orders o_seqno n_wins in_amount out_amount _91 _182 _181
+    DROP	//  msg_value random_locked owner ecvrf orders o_seqno n_wins in_amount out_amount new_player o_amount
+    s0 s9 XCHG	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player random_locked
+    0 EQINT	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player _96
+    IFJMP:<{	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player
+      s9 POP
+      7 BLKDROP	//  new_player o_amount
+      2 PUSHINT	//  new_player o_amount _97=2
+      send_tons INLINECALLDICT
+    }>	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player
+    BALANCE
+    FIRST	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player _99
+    s9 PUSH	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player _99 o_amount
+    1 LSHIFT#	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player _99 _101
+    1000000000 PUSHINT	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player _99 _101 _102=1000000000
+    ADD	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player _99 _103
+    LESS	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player _104
+    IFJMP:<{	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player
+      s9 POP
+      7 BLKDROP	//  new_player o_amount
+      2 PUSHINT	//  new_player o_amount _105=2
+      send_tons INLINECALLDICT
+    }>	//  msg_value o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount new_player
+    s0 s9 XCHG
+    999999999 PUSHINT	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount msg_value _108=999999999
+    GREATER	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _109
     333 THROWIFNOT
     BALANCE
-    FIRST	//  msg_value sender echo _113
-    s3 PUSH	//  msg_value sender echo _113 msg_value
-    1 LSHIFT#	//  msg_value sender echo _113 _115
-    1000000000 PUSHINT	//  msg_value sender echo _113 _115 _116=1000000000
-    ADD	//  msg_value sender echo _113 _117
-    GREATER	//  msg_value sender echo _118
+    FIRST	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _112
+    s8 PUSH	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _112 o_amount
+    1 LSHIFT#	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _112 _114
+    1000000000 PUSHINT	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _112 _114 _115=1000000000
+    ADD	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _112 _116
+    GREATER	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _117
     666 THROWIFNOT
-    0 PUSHINT	//  msg_value sender echo _121=0
-    24 PUSHINT	//  msg_value sender echo _121=0 _122=24
-    NEWC	//  msg_value sender echo _121=0 _122=24 _123
-    6 STU	//  msg_value sender echo _121=0 _125
-    ROT	//  msg_value sender _121=0 _125 echo
-    STSLICER	//  msg_value sender _121=0 _126
-    OVER	//  msg_value sender _121=0 _126 _127=0
-    STVARUINT16	//  msg_value sender _121=0 _128
-    107 STU	//  msg_value sender _142
-    SWAP	//  msg_value _142 sender
-    STSLICER	//  msg_value _143
-    SWAP	//  _143 msg_value
-    STVARUINT16	//  msg
-    ENDC	//  _145
-    64 PUSHINT	//  _145 _146=64
+    2873903193 PUSHINT	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _119=2873903193
+    0 PUSHINT	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _119=2873903193 _120=0
+    24 PUSHINT	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _119=2873903193 _120=0 _121=24
+    NEWC	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _119=2873903193 _120=0 _121=24 _122
+    6 STU	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _119=2873903193 _120=0 _124
+    s8 PUSH	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _119=2873903193 _120=0 _124 ecvrf
+    STSLICER	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _119=2873903193 _120=0 _125
+    610000 PUSHINT	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _119=2873903193 _120=0 _125 _126=610000
+    STVARUINT16	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _119=2873903193 _120=0 _127
+    107 STU	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _119=2873903193 _141
+    32 STU	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _143
+    MYADDR	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _143 _144
+    STSLICER	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _145
+    ENDC	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _146
+    1 PUSHINT	//  new_player o_amount owner ecvrf orders o_seqno n_wins in_amount out_amount _146 _147=1
     SENDRAWMSG
+    s4 s3 XCPU	//  new_player o_amount owner ecvrf out_amount o_seqno n_wins in_amount orders o_seqno
+    remove_old_orders CALLDICT	//  new_player o_amount owner ecvrf out_amount o_seqno n_wins in_amount orders
+    s0 s3 XCHG	//  new_player o_amount owner ecvrf out_amount orders n_wins in_amount o_seqno
+    INC	//  new_player o_amount owner ecvrf out_amount orders n_wins in_amount o_seqno
+    s7 s1 s8 XCHG3
+    s6 s2 XCHG2
+    s1 s4 XCHG
+    s1 s5 XCHG
+    s1 s3 XCHG
+    0 PUSHINT
+    s0 s2 XCHG	//  o_seqno n_wins in_amount out_amount owner ecvrf new_player random_locked=0 o_amount orders
+    pack_state INLINECALLDICT	//  _153
+    c4 POP
   }>
   get_order_seqno PROC:<{
     // 
-    unpack_state INLINECALLDICT	//  _12 _13 _14 _15 _16
-    4 BLKDROP	//  stats
-    unpack_stats INLINECALLDICT	//  _17 _18 _19 _20 _21
+    unpack_state INLINECALLDICT	//  _13 _14 _15 _16 _17 _18
+    5 BLKDROP	//  stats
+    unpack_stats INLINECALLDICT	//  _19 _20 _21 _22 _23
     4 BLKDROP	//  o_seqno
   }>
   get_number_of_wins PROC:<{
     // 
-    unpack_state INLINECALLDICT	//  _12 _13 _14 _15 _16
-    4 BLKDROP	//  stats
-    unpack_stats INLINECALLDICT	//  _17 _18 _19 _20 _21
+    unpack_state INLINECALLDICT	//  _13 _14 _15 _16 _17 _18
+    5 BLKDROP	//  stats
+    unpack_stats INLINECALLDICT	//  _19 _20 _21 _22 _23
     s3 s4 XCHG
     4 BLKDROP	//  n_wins
   }>
   get_incoming_amount PROC:<{
     // 
-    unpack_state INLINECALLDICT	//  _12 _13 _14 _15 _16
-    4 BLKDROP	//  stats
-    unpack_stats INLINECALLDICT	//  _17 _18 _19 _20 _21
+    unpack_state INLINECALLDICT	//  _13 _14 _15 _16 _17 _18
+    5 BLKDROP	//  stats
+    unpack_stats INLINECALLDICT	//  _19 _20 _21 _22 _23
     s2 s4 XCHG
     4 BLKDROP	//  in_amount
   }>
   get_outgoing_amount PROC:<{
     // 
-    unpack_state INLINECALLDICT	//  _12 _13 _14 _15 _16
-    4 BLKDROP	//  stats
-    unpack_stats INLINECALLDICT	//  _17 _18 _19 _20 _21
+    unpack_state INLINECALLDICT	//  _13 _14 _15 _16 _17 _18
+    5 BLKDROP	//  stats
+    unpack_stats INLINECALLDICT	//  _19 _20 _21 _22 _23
     s1 s4 XCHG
     4 BLKDROP	//  out_amount
   }>
   get_orders PROC:<{
     // 
-    unpack_state INLINECALLDICT	//  _26 _27 _28 _29 _30
-    s3 s4 XCHG
-    4 BLKDROP	//  orders
+    unpack_state INLINECALLDICT	//  _27 _28 _29 _30 _31 _32
+    s4 s5 XCHG
+    5 BLKDROP	//  orders
     31 PUSHPOW2DEC	//  orders cursor=2147483647
     PUSHNULL	//  orders cursor=2147483647 l
     UNTIL:<{
       s1 s2 XCPU
-      64 PUSHINT	//  orders l cursor orders _12=64
+      64 PUSHINT	//  orders l cursor orders _13=64
       DICTUGETPREV
       NULLSWAPIFNOT2	//  orders l order cursor f
       DUP	//  orders l order cursor f f
@@ -505,25 +515,18 @@ PROGRAM{
         s0 s2 XCHG	//  orders l f cursor order
         unpack_order INLINECALLDICT	//  orders l f cursor id status timestamp amount address
         REWRITESTDADDR	//  orders l f cursor id status timestamp amount wc addr_hash
-        6 TUPLE	//  orders l f cursor _23
-        s0 s3 XCHG2	//  orders cursor f _23 l
+        6 TUPLE	//  orders l f cursor _24
+        s0 s3 XCHG2	//  orders cursor f _24 l
         CONS	//  orders cursor f l
         s0 s2 XCHG	//  orders l f cursor
       }>ELSE<{
         s2 POP	//  orders l f cursor
       }>
       SWAP	//  orders l cursor f
-      NOT	//  orders l cursor _25
-      s1 s2 XCHG	//  orders cursor l _25
+      NOT	//  orders l cursor _26
+      s1 s2 XCHG	//  orders cursor l _26
     }>	//  orders cursor l
     2 1 BLKDROP2	//  l
-  }>
-  get_pubkey PROC:<{
-    // 
-    unpack_state INLINECALLDICT	//  _12 _13 _14 _15 _16
-    4 BLKDROP	//  stats
-    unpack_stats INLINECALLDICT	//  _17 _18 _19 _20 _21
-    4 1 BLKDROP2	//  hash
   }>
   balance PROC:<{
     // 
